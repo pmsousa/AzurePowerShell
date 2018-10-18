@@ -105,7 +105,7 @@ param(
 
     [Parameter(mandatory=$False,
       HelpMessage="Use this switch to resume the script after waiting for the blob copy to complete")]
-    [switch]$Resume
+    [switch]$Resume #= [System.Management.Automation.SwitchParameter] $true
 
 
 
@@ -208,7 +208,7 @@ function Get-BlobCopyStatus
         {
             write-warning "VHD blob copy is not complete"
             $rh = read-host "Press <Enter> to refresh or type EXIT and press <Enter> to quit copy status updates and resume later"
-            if(($rh.ToLower()) -eq 'exit')
+            if(($null -eq $rh) -and ($rh -eq 'EXIT' -or $rh -eq 'EXIT')) # ENTER = null
             {
                 write-output "Run script with -resume switch to continue creating VMs after file copy has completed."
                 BREAK
@@ -290,7 +290,7 @@ function copy-azureBlob
 } # end of copy-azureBlob function
 
 
-if(! $resume){
+if(!$resume){
 
 <###############################
 
@@ -323,7 +323,7 @@ $SubscriptionId = $sub.Id
 # check for multiple subs under same account and force user to pick one
 if($sub.count -gt 1) 
 {
-    $SubscriptionId = (Get-AzureRmSubscription | Select-Object * | Out-GridView -title "Select Target Subscription" -OutputMode Single).Id
+    $SubscriptionId = (Get-AzureRmSubscription | Select-Object * | Out-GridView -title "Select Source Subscription" -OutputMode Single).Id
     Select-AzureRmSubscription -SubscriptionId $SubscriptionId | Out-Null
     $sub = Get-AzureRmSubscription -SubscriptionId $SubscriptionId
 }
@@ -540,13 +540,13 @@ if($sub.count -gt 1)
    
 
 # check for valid sub
-if(! $SubscriptionId) 
+if(!$SubscriptionId) 
 {
    write-warning "The provided credentials failed to authenticate or are not associcated to a valid subscription. Exiting the script."
    break
 }
 
-if($SubscriptionId -eq $SourceSubscriptionID) 
+if($SubscriptionId -ne $SourceSubscriptionID) #Subscription Are the Same
 {
    write-warning "Failed to authenticate to a different subscription. Exiting the script."
    break
@@ -557,7 +557,7 @@ $SubscriptionName = $sub.Name
 write-host "Logged into $SubscriptionName with subscriptionID $SubscriptionId as $loginID" -f Green
 
 
-if(! $resume)
+if(!$resume)
 {
     [bool]$isSameEnv = $true
     if($OptionalTargetEnvironment -ne $OptionalSourceEnvironment)
@@ -822,11 +822,11 @@ if(! $resume)
     {
         if($resourceGroupName.Length -gt 16)
         {
-            $first16 = $resourceGroupName.Substring(0,16)
+            $first16 = $resourceGroupName.Substring(0,16) #CORRIGIR
         }
         else
         {
-            $first16 = $resourceGroupName 
+            $first16 = $resourceGroupName #CORRIGIR
         }
         
         [string] $guid = (New-Guid).Guid
@@ -1499,7 +1499,7 @@ else # if not resume
 if($resourceGroupVMs.storageprofile.osdisk.manageddisk -and $location -ne $srcLocation)
 {
  
-    foreach($mdObj in $VHDstorageObjects|Where-Object{$_.srcSkuName -ne 'NULL'})
+    foreach($mdObj in $VHDstorageObjects|Where-Object{$_.srcSkuName -ne $null})
     {
         # refresh the storage context object if -resume
         if($resume)
@@ -1609,11 +1609,14 @@ foreach($srcVM in $resourceGroupVMs)
 
     # get the Network Interface Card we created previously based on the original source name
     $newNICs = @()
-    foreach($nicID in $srcVM.NetworkProfile.NetworkInterfaces.id)
+    foreach($nico in $srcVM.NetworkProfile.NetworkInterfaces)
     {
+        $nicID = $nico.Id
         $NICRef = $nicID.Split('/')
         $NICName = $NICRef[($NICRef.count -1)]
-        $newNICs += Get-AzureRmNetworkInterface -Name $NICName -ResourceGroupName $ResourceGroupName 
+        $tempNIC = Get-AzureRmNetworkInterface -Name $NICName -ResourceGroupName $ResourceGroupName
+        $tempNIC.Primary = $nico.Primary
+        $newNICs += $tempNIC
     }
     
     
@@ -1659,6 +1662,8 @@ foreach($srcVM in $resourceGroupVMs)
     foreach($NIC in $newNICs)
     {
         $VirtualMachine = Add-AzureRmVMNetworkInterface -VM $VirtualMachine -Id $NIC.Id
+
+        #IF multiple NICs, one must be primary!!!
     }
 
 
